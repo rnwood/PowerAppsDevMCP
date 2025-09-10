@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test script for the MCP server
+# Test script for the MCP server following Microsoft approach
 echo "Testing PowerApps MCP Server..."
 
 # Build the server
@@ -25,10 +25,13 @@ test_message "Initialize" '{"jsonrpc":"2.0","id":1,"method":"initialize","params
 # Test tools/list
 test_message "List tools" '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 
-# Test tools/call with hello
-test_message "Call hello tool" '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hello","arguments":{"name":"PowerApps Developer"}}}'
+# Test tools/call with Hello
+test_message "Call Hello tool" '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Hello","arguments":{"message":"PowerApps Developer"}}}'
 
-# Test tools/call with hello (no name)
-test_message "Call hello tool (no name)" '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"hello","arguments":{}}}'
+# Test tools/call with ReverseEcho
+test_message "Call ReverseEcho tool" '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ReverseEcho","arguments":{"message":"PowerApps"}}}'
+
+# Test tools/call with Hello (default message)
+test_message "Call Hello tool (default)" '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"Hello","arguments":{}}}'
 
 echo "Testing complete!"

@@ -1,13 +1,14 @@
 # PowerAppsDevMCP
 
-A simple hello world MCP (Model Context Protocol) server built with .NET 8.0, following Microsoft's recommended approach for building MCP servers in C#.
+A Model Context Protocol (MCP) server built with .NET 8.0, following Microsoft's official approach for building MCP servers in C#.
 
 ## Features
 
+- **Official MCP SDK**: Uses the official `ModelContextProtocol` NuGet package
+- **Microsoft.Extensions.Hosting**: Proper .NET service patterns and dependency injection
+- **Attribute-based Tools**: Clean tool definition using Microsoft's attribute approach
 - **MCP Protocol Compliance**: Implements MCP 2024-11-05 protocol specification
-- **Hello World Tool**: Simple greeting tool demonstrating MCP tool functionality  
-- **JSON-RPC 2.0**: Standard JSON-RPC communication over stdin/stdout
-- **Clean Architecture**: Single-file implementation following .NET conventions
+- **Background Services**: Uses BackgroundService for stdin/stdout handling
 
 ## Getting Started
 
@@ -25,6 +26,31 @@ dotnet run
 
 The server starts immediately and listens for MCP protocol messages on stdin.
 
+## Architecture
+
+This implementation follows the Microsoft DevBlog approach:
+
+1. **Host.CreateApplicationBuilder** - Standard Microsoft hosting pattern
+2. **AddMcpServer()** - Official MCP SDK server registration  
+3. **WithStdioServerTransport()** - Standard transport for MCP protocol
+4. **WithToolsFromAssembly()** - Automatic tool discovery using attributes
+
+### Tool Definition
+
+Tools are defined using Microsoft's attribute-based approach:
+
+```csharp
+[McpServerToolType]
+public static class PowerAppsTools
+{
+    [McpServerTool, Description("Returns a hello world message from the PowerApps MCP Server.")]
+    public static string Hello(string message = "World") => $"Hello from PowerApps MCP Server: {message}";
+
+    [McpServerTool, Description("Echoes the message back in reverse from the PowerApps MCP Server.")]
+    public static string ReverseEcho(string message) => new string(message.Reverse().ToArray());
+}
+```
+
 ## Usage
 
 The server implements the core MCP protocol methods:
@@ -34,40 +60,26 @@ The server implements the core MCP protocol methods:
 - `tools/list` - List available tools
 - `tools/call` - Call a specific tool
 
-### Hello Tool
+### Available Tools
 
-The server provides a single "hello" tool that returns personalized greetings.
+1. **Hello** - Returns a greeting message
+   - Parameter: `message` (string, optional, default: "World")
 
-**Parameters:**
-- `name` (optional): Name to include in greeting (defaults to "World")
+2. **ReverseEcho** - Returns the input message reversed
+   - Parameter: `message` (string, required)
 
-**Example Request:**
+### Example Request
+
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
   "params": {
-    "name": "hello",
+    "name": "Hello",
     "arguments": {
-      "name": "PowerApps Developer"
+      "message": "PowerApps Developer"
     }
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "content": [
-      {
-        "type": "text",
-        "text": "Hello, PowerApps Developer! This is a greeting from the PowerApps MCP Server."
-      }
-    ]
   }
 }
 ```
@@ -80,14 +92,13 @@ Run the included test script to verify all functionality:
 ./test_server.sh
 ```
 
-This tests all implemented MCP methods and demonstrates the hello tool in action.
+This tests all implemented MCP methods and demonstrates the tools in action.
 
-## Implementation
+## Dependencies
 
-This MCP server follows Microsoft's recommended approach using:
-- Standard .NET 8.0 console application
-- Built-in `System.Text.Json` for JSON handling
-- `JsonNode` for flexible JSON manipulation
-- Simple, single-file architecture for clarity
+- ModelContextProtocol (0.3.0-preview.4)
+- Microsoft.Extensions.Hosting (9.0.9)
 
-The implementation demonstrates the core concepts needed to build MCP servers in .NET without unnecessary complexity.
+## Implementation Notes
+
+This implementation follows Microsoft's recommended approach as outlined in the [official DevBlog](https://devblogs.microsoft.com/dotnet/build-a-model-context-protocol-mcp-server-in-csharp/), using the official MCP C# SDK for robust, maintainable MCP server development.
