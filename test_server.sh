@@ -15,7 +15,8 @@ fi
 # Function to test a message
 test_message() {
     echo "Testing: $1"
-    echo "$2" | dotnet run 2>/dev/null | head -1
+    result=$(echo "$2" | dotnet run 2>/dev/null)
+    echo "Response: $result"
     echo ""
 }
 
@@ -33,5 +34,8 @@ test_message "Call ReverseEcho tool" '{"jsonrpc":"2.0","id":4,"method":"tools/ca
 
 # Test tools/call with Hello (default message)
 test_message "Call Hello tool (default)" '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"Hello","arguments":{}}}'
+
+# Test WhoAmI tool with an example environment URL (it will fail authentication in test environment, but we can see if the tool is listed)
+test_message "Call WhoAmI tool (test error handling)" '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"WhoAmI","arguments":{"environmentUrl":"https://test.crm.dynamics.com"}}}'
 
 echo "Testing complete!"
