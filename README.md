@@ -9,6 +9,8 @@ A Model Context Protocol (MCP) server built with .NET 8.0, following Microsoft's
 - **Attribute-based Tools**: Clean tool definition using Microsoft's attribute approach
 - **MCP Protocol Compliance**: Implements MCP 2024-11-05 protocol specification
 - **Background Services**: Uses BackgroundService for stdin/stdout handling
+- **Dataverse Integration**: Connect to Microsoft Dataverse using DefaultAzureCredential authentication
+- **WhoAmI Support**: Query authenticated user information from Dataverse environments
 
 ## Getting Started
 
@@ -25,6 +27,24 @@ dotnet run
 ```
 
 The server starts immediately and listens for MCP protocol messages on stdin.
+
+## Authentication
+
+The WhoAmI tool uses Azure DefaultAzureCredential for authentication, which automatically tries multiple authentication methods in order:
+
+1. Environment variables (Azure CLI, service principal)
+2. Managed Identity (when running in Azure)
+3. Visual Studio / VS Code authentication
+4. Azure CLI authentication
+5. Azure PowerShell authentication
+
+This approach provides secure, passwordless authentication without requiring browser interaction.
+
+**Setup Options:**
+
+- **Azure CLI**: Run `az login` before using the tool
+- **Environment Variables**: Set `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
+- **Managed Identity**: When running in Azure (App Service, Functions, VMs)
 
 ## Architecture
 
@@ -68,6 +88,11 @@ The server implements the core MCP protocol methods:
 2. **ReverseEcho** - Returns the input message reversed
    - Parameter: `message` (string, required)
 
+3. **WhoAmI** - Connects to Microsoft Dataverse and returns authenticated user information
+   - Parameter: `environmentUrl` (string, required) - The Dataverse environment URL (e.g., "https://yourorg.crm.dynamics.com")
+   - Uses Azure DefaultAzureCredential for authentication (no browser interaction required)
+   - Returns: JSON with userId, businessUnitId, organizationId, and connection details
+
 ### Example Request
 
 ```json
@@ -81,6 +106,34 @@ The server implements the core MCP protocol methods:
       "message": "PowerApps Developer"
     }
   }
+}
+```
+
+### WhoAmI Example
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "WhoAmI",
+    "arguments": {
+      "environmentUrl": "https://yourorg.crm.dynamics.com"
+    }
+  }
+}
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "userId": "12345678-1234-1234-1234-123456789012",
+  "businessUnitId": "87654321-4321-4321-4321-210987654321",
+  "organizationId": "abcdef12-3456-7890-abcd-ef1234567890",
+  "environmentUrl": "https://yourorg.crm.dynamics.com",
+  "timestamp": "2024-01-15T10:30:45.123Z"
 }
 ```
 
@@ -98,6 +151,9 @@ This tests all implemented MCP methods and demonstrates the tools in action.
 
 - ModelContextProtocol (0.3.0-preview.4)
 - Microsoft.Extensions.Hosting (9.0.9)
+- Microsoft.PowerPlatform.Dataverse.Client (1.1.32)
+- Azure.Identity (1.12.1)
+- Microsoft.CrmSdk.CoreAssemblies (9.0.2.59)
 
 ## Implementation Notes
 
