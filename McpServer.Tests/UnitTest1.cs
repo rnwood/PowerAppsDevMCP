@@ -1,142 +1,133 @@
-using System.Diagnostics;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
-using System.Text;
 
 namespace McpServer.Tests;
 
-public class McpServerTests
+public class WhoAmITests
 {
-    [Test]
-    public void TestServerProjectExists()
-    {
-        // Verify the server project exists and can be built
-        var serverProjectPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "McpServer", "McpServer.csproj");
-        Assert.That(File.Exists(serverProjectPath), Is.True, "McpServer project should exist");
-    }
+    private IMcpClient? _client;
+    private StdioClientTransport? _transport;
 
-    [Test]
-    public async Task TestServerBuild()
+    [SetUp]
+    public async Task Setup()
     {
-        // Test that the server project builds successfully
-        var serverProjectDir = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "McpServer");
+        // Get the correct path to the McpServer project from the test directory
+        var testDirectory = TestContext.CurrentContext.TestDirectory;
+        var solutionDirectory = Path.GetFullPath(Path.Combine(testDirectory, "..", "..", "..", ".."));
+        var serverProjectPath = Path.Combine(solutionDirectory, "McpServer", "McpServer.csproj");
         
-        var process = new Process
+        // Verify the server project exists
+        if (!File.Exists(serverProjectPath))
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = "build",
-                WorkingDirectory = serverProjectDir,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            }
-        };
-
-        process.Start();
-        await process.WaitForExitAsync();
-
-        Assert.That(process.ExitCode, Is.EqualTo(0), "Server project should build successfully");
-    }
-
-    [Test]
-    public async Task TestServerStartsAndStops()
-    {
-        // Test that the server can start and responds to basic input
-        var serverProjectDir = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "McpServer");
-        
-        var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = "run",
-                WorkingDirectory = serverProjectDir,
-                UseShellExecute = false,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            }
-        };
-
-        process.Start();
-
-        // Give the server time to start
-        await Task.Delay(2000);
-
-        // Send a simple initialization message
-        var initMessage = """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{}}}""";
-        await process.StandardInput.WriteLineAsync(initMessage);
-        await process.StandardInput.FlushAsync();
-
-        // Give time for processing
-        await Task.Delay(1000);
-
-        // Check that the process is still running (not crashed)
-        Assert.That(process.HasExited, Is.False, "Server should still be running after receiving initialization");
-
-        // Terminate the process
-        if (!process.HasExited)
-        {
-            process.Kill();
-            await process.WaitForExitAsync();
+            throw new FileNotFoundException($"McpServer project not found at: {serverProjectPath}");
         }
 
-        process.Dispose();
+        // Create transport to connect to our McpServer using stdio
+        _transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "McpServer",
+            Command = "dotnet",
+            Arguments = ["run", "--project", serverProjectPath],
+            WorkingDirectory = solutionDirectory
+        });
+
+        // Create client and connect to server
+        _client = await McpClientFactory.CreateAsync(_transport);
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        if (_client != null)
+        {
+            await _client.DisposeAsync();
+        }
+        
+        _transport = null;
     }
 
     [Test]
-    public void TestNoDotNet8CompatibilityWarnings()
+    public async Task WhoAmI_WithValidUrl_ShouldReturnConnectionError()
     {
-        // Test that there are no .NET 8 compatibility warnings in the project file
-        var projectPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "McpServer", "McpServer.csproj");
-        var projectContent = File.ReadAllText(projectPath);
+        // Arrange
+        var environmentUrl = "https://example.crm.dynamics.com";
+        var arguments = new Dictionary<string, object?> { ["environmentUrl"] = environmentUrl };
+
+        // Act
+        var result = await _client!.CallToolAsync("who_am_i", arguments);
+
+        // Assert
+        Assert.That(result, Is.Not.Null, "Result should not be null");
+        Assert.That(result.Content, Is.Not.Empty, "Result content should not be empty");
         
-        // Should not contain the problematic package
-        Assert.That(projectContent, Does.Not.Contain("Microsoft.CrmSdk.CoreAssemblies"), 
-            "Project should not contain Microsoft.CrmSdk.CoreAssemblies which is not compatible with .NET 8");
+        var textContent = result.Content.FirstOrDefault(c => c.Type == "text") as TextContentBlock;
+        Assert.That(textContent, Is.Not.Null, "Should have text content");
+        
+        var response = JsonSerializer.Deserialize<JsonElement>(textContent!.Text);
+        Assert.That(response.GetProperty("success").GetBoolean(), Is.False, "Should return success=false due to connection error");
+        Assert.That(response.TryGetProperty("error", out _), Is.True, "Should contain error property");
     }
 
     [Test]
-    public void TestRequiredPackagesPresent()
+    public async Task WhoAmI_WithEmptyUrl_ShouldReturnValidationError()
     {
-        // Test that required packages are present
-        var projectPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "McpServer", "McpServer.csproj");
-        var projectContent = File.ReadAllText(projectPath);
+        // Arrange
+        var arguments = new Dictionary<string, object?> { ["environmentUrl"] = "" };
+
+        // Act
+        var result = await _client!.CallToolAsync("who_am_i", arguments);
+
+        // Assert
+        Assert.That(result, Is.Not.Null, "Result should not be null");
+        Assert.That(result.Content, Is.Not.Empty, "Result content should not be empty");
         
-        Assert.That(projectContent, Does.Contain("Microsoft.PowerPlatform.Dataverse.Client"), 
-            "Project should contain Microsoft.PowerPlatform.Dataverse.Client package");
-        Assert.That(projectContent, Does.Contain("Azure.Identity"), 
-            "Project should contain Azure.Identity package");
-        Assert.That(projectContent, Does.Contain("ModelContextProtocol"), 
-            "Project should contain ModelContextProtocol package");
+        var textContent = result.Content.FirstOrDefault(c => c.Type == "text") as TextContentBlock;
+        Assert.That(textContent, Is.Not.Null, "Should have text content");
+        
+        var response = JsonSerializer.Deserialize<JsonElement>(textContent!.Text);
+        Assert.That(response.GetProperty("success").GetBoolean(), Is.False, "Should return success=false for empty URL");
+        Assert.That(response.GetProperty("error").GetString(), Does.Contain("Environment URL is required"), "Should contain validation error message");
     }
 
     [Test]
-    public void TestWhoAmIFunctionExists()
+    public async Task WhoAmI_WithInvalidUrl_ShouldReturnConnectionError()
     {
-        // Test that the WhoAmI function exists in the code
-        var programPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "McpServer", "Program.cs");
-        var programContent = File.ReadAllText(programPath);
+        // Arrange
+        var environmentUrl = "https://invalid-nonexistent-url.crm.dynamics.com";
+        var arguments = new Dictionary<string, object?> { ["environmentUrl"] = environmentUrl };
+
+        // Act
+        var result = await _client!.CallToolAsync("who_am_i", arguments);
+
+        // Assert
+        Assert.That(result, Is.Not.Null, "Result should not be null");
+        Assert.That(result.Content, Is.Not.Empty, "Result content should not be empty");
         
-        Assert.That(programContent, Does.Contain("WhoAmI"), 
-            "Program should contain WhoAmI function");
-        Assert.That(programContent, Does.Contain("environmentUrl"), 
-            "WhoAmI function should accept environmentUrl parameter");
+        var textContent = result.Content.FirstOrDefault(c => c.Type == "text") as TextContentBlock;
+        Assert.That(textContent, Is.Not.Null, "Should have text content");
+        
+        var response = JsonSerializer.Deserialize<JsonElement>(textContent!.Text);
+        Assert.That(response.GetProperty("success").GetBoolean(), Is.False, "Should return success=false for invalid URL");
+        Assert.That(response.TryGetProperty("error", out _), Is.True, "Should contain error property for connection failure");
     }
 
     [Test]
-    public void TestUsesDotNetCompatibleSDK()
+    public async Task Server_ShouldHaveWhoAmITool()
     {
-        // Test that the code uses .NET 8 compatible Dataverse SDK approaches
-        var programPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "McpServer", "Program.cs");
-        var programContent = File.ReadAllText(programPath);
-        
-        Assert.That(programContent, Does.Contain("DefaultAzureCredential"), 
-            "Should use DefaultAzureCredential for authentication");
-        Assert.That(programContent, Does.Contain("Microsoft.PowerPlatform.Dataverse.Client"), 
-            "Should use the official Dataverse client");
+        // Act
+        var tools = await _client!.ListToolsAsync();
+
+        // Debug: Print all available tools
+        TestContext.WriteLine($"Available tools count: {tools.Count}");
+        foreach (var tool in tools)
+        {
+            TestContext.WriteLine($"Tool: {tool.Name} - {tool.Description}");
+        }
+
+        // Assert
+        var whoAmITool = tools.FirstOrDefault(t => t.Name == "who_am_i");
+        Assert.That(whoAmITool, Is.Not.Null, "Server should have who_am_i tool");
+        Assert.That(whoAmITool!.Description, Does.Contain("Dataverse"), "WhoAmI tool should mention Dataverse in description");
     }
 }
