@@ -24,11 +24,12 @@ public class WhoAmITests
         }
 
         // Create transport to connect to our McpServer using stdio
+        // Pass environment URL as command line argument for security
         _transport = new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = "McpServer",
             Command = "dotnet",
-            Arguments = ["run", "--project", serverProjectPath],
+            Arguments = ["run", "--project", serverProjectPath, "--", "--environment-url", "https://example.crm.dynamics.com"],
             WorkingDirectory = solutionDirectory
         });
 
@@ -48,11 +49,10 @@ public class WhoAmITests
     }
 
     [Test]
-    public async Task WhoAmI_WithValidUrl_ShouldReturnConnectionError()
+    public async Task WhoAmI_WithConfiguredUrl_ShouldReturnConnectionError()
     {
-        // Arrange
-        var environmentUrl = "https://example.crm.dynamics.com";
-        var arguments = new Dictionary<string, object?> { ["environmentUrl"] = environmentUrl };
+        // Arrange - URL is now configured via command line argument in Setup
+        var arguments = new Dictionary<string, object?>();
 
         // Act
         var result = await _client!.CallToolAsync("who_am_i", arguments);
@@ -72,44 +72,87 @@ public class WhoAmITests
     [Test]
     public async Task WhoAmI_WithEmptyUrl_ShouldReturnValidationError()
     {
-        // Arrange
-        var arguments = new Dictionary<string, object?> { ["environmentUrl"] = "" };
-
-        // Act
-        var result = await _client!.CallToolAsync("who_am_i", arguments);
-
-        // Assert
-        Assert.That(result, Is.Not.Null, "Result should not be null");
-        Assert.That(result.Content, Is.Not.Empty, "Result content should not be empty");
+        // This test needs a separate server instance with no environment URL
+        var testDirectory = TestContext.CurrentContext.TestDirectory;
+        var solutionDirectory = Path.GetFullPath(Path.Combine(testDirectory, "..", "..", "..", ".."));
+        var serverProjectPath = Path.Combine(solutionDirectory, "McpServer", "McpServer.csproj");
         
-        var textContent = result.Content.FirstOrDefault(c => c.Type == "text") as TextContentBlock;
-        Assert.That(textContent, Is.Not.Null, "Should have text content");
-        
-        var response = JsonSerializer.Deserialize<JsonElement>(textContent!.Text);
-        Assert.That(response.GetProperty("success").GetBoolean(), Is.False, "Should return success=false for empty URL");
-        Assert.That(response.GetProperty("error").GetString(), Does.Contain("Environment URL is required"), "Should contain validation error message");
+        var emptyUrlTransport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "McpServerNoUrl",
+            Command = "dotnet",
+            Arguments = ["run", "--project", serverProjectPath],
+            WorkingDirectory = solutionDirectory
+        });
+
+        var emptyUrlClient = await McpClientFactory.CreateAsync(emptyUrlTransport);
+
+        try
+        {
+            // Arrange - No URL configured
+            var arguments = new Dictionary<string, object?>();
+
+            // Act
+            var result = await emptyUrlClient.CallToolAsync("who_am_i", arguments);
+
+            // Assert
+            Assert.That(result, Is.Not.Null, "Result should not be null");
+            Assert.That(result.Content, Is.Not.Empty, "Result content should not be empty");
+            
+            var textContent = result.Content.FirstOrDefault(c => c.Type == "text") as TextContentBlock;
+            Assert.That(textContent, Is.Not.Null, "Should have text content");
+            
+            var response = JsonSerializer.Deserialize<JsonElement>(textContent!.Text);
+            Assert.That(response.GetProperty("success").GetBoolean(), Is.False, "Should return success=false for missing URL");
+            Assert.That(response.GetProperty("error").GetString(), Does.Contain("Environment URL not configured"), "Should contain validation error message");
+        }
+        finally
+        {
+            await emptyUrlClient.DisposeAsync();
+        }
     }
 
     [Test]
     public async Task WhoAmI_WithInvalidUrl_ShouldReturnConnectionError()
     {
-        // Arrange
-        var environmentUrl = "https://invalid-nonexistent-url.crm.dynamics.com";
-        var arguments = new Dictionary<string, object?> { ["environmentUrl"] = environmentUrl };
-
-        // Act
-        var result = await _client!.CallToolAsync("who_am_i", arguments);
-
-        // Assert
-        Assert.That(result, Is.Not.Null, "Result should not be null");
-        Assert.That(result.Content, Is.Not.Empty, "Result content should not be empty");
+        // This test needs a separate server instance with an invalid URL
+        var testDirectory = TestContext.CurrentContext.TestDirectory;
+        var solutionDirectory = Path.GetFullPath(Path.Combine(testDirectory, "..", "..", "..", ".."));
+        var serverProjectPath = Path.Combine(solutionDirectory, "McpServer", "McpServer.csproj");
         
-        var textContent = result.Content.FirstOrDefault(c => c.Type == "text") as TextContentBlock;
-        Assert.That(textContent, Is.Not.Null, "Should have text content");
-        
-        var response = JsonSerializer.Deserialize<JsonElement>(textContent!.Text);
-        Assert.That(response.GetProperty("success").GetBoolean(), Is.False, "Should return success=false for invalid URL");
-        Assert.That(response.TryGetProperty("error", out _), Is.True, "Should contain error property for connection failure");
+        var invalidUrlTransport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "McpServerInvalidUrl",
+            Command = "dotnet",
+            Arguments = ["run", "--project", serverProjectPath, "--", "--environment-url", "https://invalid-nonexistent-url.crm.dynamics.com"],
+            WorkingDirectory = solutionDirectory
+        });
+
+        var invalidUrlClient = await McpClientFactory.CreateAsync(invalidUrlTransport);
+
+        try
+        {
+            // Arrange - Invalid URL configured via command line
+            var arguments = new Dictionary<string, object?>();
+
+            // Act
+            var result = await invalidUrlClient.CallToolAsync("who_am_i", arguments);
+
+            // Assert
+            Assert.That(result, Is.Not.Null, "Result should not be null");
+            Assert.That(result.Content, Is.Not.Empty, "Result content should not be empty");
+            
+            var textContent = result.Content.FirstOrDefault(c => c.Type == "text") as TextContentBlock;
+            Assert.That(textContent, Is.Not.Null, "Should have text content");
+            
+            var response = JsonSerializer.Deserialize<JsonElement>(textContent!.Text);
+            Assert.That(response.GetProperty("success").GetBoolean(), Is.False, "Should return success=false for invalid URL");
+            Assert.That(response.TryGetProperty("error", out _), Is.True, "Should contain error property for connection failure");
+        }
+        finally
+        {
+            await invalidUrlClient.DisposeAsync();
+        }
     }
 
     [Test]

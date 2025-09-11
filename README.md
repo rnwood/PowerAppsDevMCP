@@ -23,10 +23,16 @@ A Model Context Protocol (MCP) server built with .NET 8.0, following Microsoft's
 ```bash
 cd McpServer
 dotnet build
-dotnet run
+dotnet run -- --environment-url https://yourorg.crm.dynamics.com
 ```
 
 The server starts immediately and listens for MCP protocol messages on stdin.
+
+**Command Line Arguments:**
+
+- `--environment-url` (optional): The Dataverse environment URL for WhoAmI operations (e.g., https://yourorg.crm.dynamics.com)
+
+If no environment URL is provided, WhoAmI calls will return an error message indicating that the URL needs to be configured.
 
 ## Authentication
 
@@ -89,7 +95,7 @@ The server implements the core MCP protocol methods:
    - Parameter: `message` (string, required)
 
 3. **WhoAmI** - Connects to Microsoft Dataverse and returns authenticated user information
-   - Parameter: `environmentUrl` (string, required) - The Dataverse environment URL (e.g., "https://yourorg.crm.dynamics.com")
+   - Environment URL configured via `--environment-url` command line argument when starting the server
    - Uses Azure DefaultAzureCredential for authentication (no browser interaction required)
    - Returns: JSON with userId, businessUnitId, organizationId, and connection details
 
@@ -117,13 +123,13 @@ The server implements the core MCP protocol methods:
   "id": 2,
   "method": "tools/call",
   "params": {
-    "name": "WhoAmI",
-    "arguments": {
-      "environmentUrl": "https://yourorg.crm.dynamics.com"
-    }
+    "name": "who_am_i",
+    "arguments": {}
   }
 }
 ```
+
+**Note:** The environment URL is now configured when starting the server using the `--environment-url` command line argument for improved security.
 
 **Example Response:**
 ```json
@@ -153,7 +159,7 @@ This tests all implemented MCP methods and demonstrates the tools in action.
 - Microsoft.Extensions.Hosting (9.0.9)
 - Microsoft.PowerPlatform.Dataverse.Client (1.1.32)
 - Azure.Identity (1.12.1)
-- Microsoft.CrmSdk.CoreAssemblies (9.0.2.59)
+- System.CommandLine (2.0.0-beta4.22272.1)
 
 ## Implementation Notes
 
